@@ -2,49 +2,94 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "helloapp:v1"
-        CONTAINER_NAME = "helloapp-container"
-        PORT = "8082"   // EC2 public port for access
+        DOCKERHUB_CREDENTIALS = credentials('docker_aws_login')
+        IMAGE_NAME = '908340073825.dkr.ecr.us-east-1.amazonaws.com/hello-app-jenkins'  // Change to your Docker Hub repository name
+        IMAGE_TAG  = "v${BUILD_NUMBER}"   // e.g. v1, v2, v3...
+    }
+
+    tools {
+        jdk 'JDK-17'
+        maven 'Maven_3.9'
     }
 
     stages {
+
         stage('Checkout') {
             steps {
-                // Pull code from GitHub
-                git branch: 'main', url: 'https://github.com/sneghalathaterraform/hello-sample-ec2'
+                echo '📥 Cloning repository...'
+                git branch: 'main',
+                    url: 'https://github.com/sneghalathaterraform/hello-sample-ec2.git'
             }
         }
 
-        stage('Build WAR') {
+        stage('Build JAR') {
             steps {
-                // Compile and package with Maven
-                sh 'mvn clean package'
+                echo '⚙️ Building Spring Boot JAR...'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage('Docker Build') {
+        stage('Run Tests') {
             steps {
-                // Build Docker image using Dockerfile in repo
-                sh "docker build -t ${IMAGE_NAME} ."
+                echo '🧪 Running tests...'
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    junit '**/target/surefire-reports/*.xml'
+                }
             }
         }
 
-        stage('Docker Run') {
+        stage('Build Docker Image') {
             steps {
-                // Stop old container if exists
-                sh "docker rm -f ${CONTAINER_NAME} || true"
-                // Run new container mapping EC2 port
-                sh "docker run -d --name ${CONTAINER_NAME} -p ${PORT}:8080 ${IMAGE_NAME}"
+                echo '🐳 Building Docker image...'
+                sh """
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+                """
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                echo '🚀 Pushing image to Docker Hub...'
+                sh """
+                    echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
+                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                    docker push ${IMAGE_NAME}:latest
+                """
+            }
+        }
+
+        stage('Deploy Container') {
+            steps {
+                echo '▶️ Running Docker container...'
+                sh """
+                    # Stop and remove old container if running
+                    docker stop springboot-app || true
+                    docker rm springboot-app   || true
+
+                    # Run new container
+                    docker run -d \
+                        --name springboot-app \
+                        -p 8080:8080 \
+                        ${IMAGE_NAME}:latest
+                """
             }
         }
     }
 
     post {
         success {
-            echo "Deployment Successful! Access at http://<EC2-PUBLIC-IP>:${PORT}/helloapp"
+            echo '✅ Pipeline completed successfully!'
         }
         failure {
-            echo "Build or Deployment Failed!"
+            echo '❌ Pipeline failed!'
+        }
+        always {
+            // Clean up local Docker images to save disk space
+            sh 'docker image prune -f'
         }
     }
 }
