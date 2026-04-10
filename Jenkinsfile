@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('docker_aws_login')
-        IMAGE_NAME = '908340073825.dkr.ecr.us-east-1.amazonaws.com/hello-app-jenkins'  // Change to your Docker Hub repository name
+        IMAGE_NAME = '908340073825.dkr.ecr.us-east-1.amazonaws.com/helloapp'  // Change to your Docker Hub repository name
         IMAGE_TAG  = "v${BUILD_NUMBER}"   // e.g. v1, v2, v3...
     }
 
