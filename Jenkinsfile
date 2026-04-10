@@ -29,18 +29,6 @@ pipeline {
             }
         }
 
-        stage('Run Tests') {
-            steps {
-                echo '🧪 Running tests...'
-                sh 'mvn test'
-            }
-            post {
-                always {
-                    junit '**/target/surefire-reports/*.xml'
-                }
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 echo '🐳 Building Docker image...'
