@@ -2,7 +2,11 @@ pipeline {
     agent any
 
     environment {
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')      // secret text credential ID
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
         DOCKERHUB_CREDENTIALS = credentials('docker_aws_login')
+        AWS_REGION      = 'us-east-1'
+        ECR_REGISTRY    = '908340073825.dkr.ecr.us-east-1.amazonaws.com'
         IMAGE_NAME = '908340073825.dkr.ecr.us-east-1.amazonaws.com/helloapp'  // Change to your Docker Hub repository name
         IMAGE_TAG  = "v${BUILD_NUMBER}"   // e.g. v1, v2, v3...
     }
@@ -29,38 +33,37 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Authenticate to ECR') {
             steps {
-                echo '🐳 Building Docker image...'
-                sh """
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
-                """
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                    """
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Build Docker Image') {
             steps {
-                echo '🚀 Pushing image to Docker Hub...'
-                sh """
-                    echo ${DOCKERHUB_CREDENTIALS} | docker login -u ${DOCKERHUB_CREDENTIALS} --password-stdin
-                    docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                    docker push ${IMAGE_NAME}:latest
-                """
+                    sh """
+                        docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${ECR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                    """
             }
         }
+
 
         stage('Deploy Container') {
             steps {
                 echo '▶️ Running Docker container...'
                 sh """
                     # Stop and remove old container if running
-                    docker stop springboot-app || true
-                    docker rm springboot-app   || true
+                    docker stop helloapp || true
+                    docker rm helloapp   || true
 
                     # Run new container
                     docker run -d \
-                        --name springboot-app \
+                        --name helloapp \
                         -p 8080:8080 \
                         ${IMAGE_NAME}:latest
                 """
